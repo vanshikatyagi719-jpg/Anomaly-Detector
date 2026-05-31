@@ -1,0 +1,8 @@
+{
+  "python.defaultInterpreterPath": "C:\\Users\\Vanshika Tyagi\\OneDrive\\Desktop\\Anomaly detector\\venv\\Scripts\\python.exe",
+  "python-envs.defaultEnvManager": "ms-python.python:system",
+  "editor.formatOnSave": true,
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  }
+}

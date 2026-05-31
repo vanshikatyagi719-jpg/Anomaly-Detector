@@ -1,0 +1,222 @@
+<!doctype html>
+<html>
+  <head>
+    <title>AegisIoT Dashboard</title>
+
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #111827;
+        color: white;
+        padding: 20px;
+      }
+
+      h1 {
+        text-align: center;
+      }
+
+      .status-card {
+        background: #1f2937;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+      }
+
+      .card {
+        background: #1f2937;
+        padding: 20px;
+        border-radius: 10px;
+      }
+
+      .value {
+        font-size: 28px;
+        font-weight: bold;
+        margin-top: 10px;
+      }
+
+      #status {
+        font-size: 28px;
+        font-weight: bold;
+      }
+
+      #anomaly-type {
+        font-size: 24px;
+        font-weight: bold;
+        color: #ffb347;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>AegisIoT Monitoring Dashboard</h1>
+
+    <div class="status-card">
+      <h2>System Status</h2>
+      <div id="status">Connecting...</div>
+
+      <h3>Detected Anomaly</h3>
+      <div id="anomaly-type">NONE</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Temperature</h3>
+        <div id="temp" class="value">--</div>
+      </div>
+
+      <div class="card">
+        <h3>Vibration</h3>
+        <div id="vibration" class="value">--</div>
+      </div>
+
+      <div class="card">
+        <h3>Pressure</h3>
+        <div id="pressure" class="value">--</div>
+      </div>
+
+      <div class="card">
+        <h3>Flow Rate</h3>
+        <div id="flow" class="value">--</div>
+      </div>
+      <div class="card history-card">
+        <h3>Recent Alerts</h3>
+        <div id="history-body" class="history-container"></div>
+      </div>
+      <div class="card">
+        <h3>Alert Severity</h3>
+        <div class="severity-container">
+          <div id="severity-indicator"></div>
+        </div>
+        <div id="severity-text">NORMAL</div>
+      </div>
+      <div class="card">
+        <h3>Root Cause Analysis</h3>
+        <div id="root-cause">Waiting....</div>
+      </div>
+      <div class="card">
+        <h3>Predictive Maintenance</h3>
+        <div>Bearing : <span id="bearing_rul">--</span>days</div>
+        <div>Coolant : <span id="coolant_rul">--</span>days</div>
+        <div>Piping : <span id="piping_rul">--</span>days</div>
+      </div>
+    </div>
+
+    <script>
+      const socket = new WebSocket("ws://localhost:8000/ws/stream");
+
+      socket.onopen = () => {
+        document.getElementById("status").innerText = "CONNECTED";
+      };
+
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        console.log(data);
+
+        if (data.type !== "telemetry") return;
+
+        const r = data.payload.readings;
+
+        // Sensor Cards
+        document.getElementById("temp").innerText =
+          r.temperature.toFixed(2) + " °C";
+
+        document.getElementById("vibration").innerText =
+          r.vibration.toFixed(3) + " mm/s";
+
+        document.getElementById("pressure").innerText =
+          r.pressure.toFixed(2) + " bar";
+
+        document.getElementById("flow").innerText =
+          r.flowRate.toFixed(2) + " L/min";
+
+        // Status
+        document.getElementById("status").innerText =
+          data.payload.status || "NORMAL";
+
+        // Anomaly Type
+        document.getElementById("anomaly-type").innerText =
+          data.payload.anomaly_type || "NONE";
+
+        // Severity
+        const severity = data.payload.severity || "NORMAL";
+
+        document.getElementById("severity-text").innerText = severity;
+
+        const indicator = document.getElementById("severity-indicator");
+
+        if (severity === "CRITICAL") {
+          indicator.style.width = "100%";
+          indicator.style.backgroundColor = "#ef4444";
+        } else if (severity === "WARNING") {
+          indicator.style.width = "70%";
+          indicator.style.backgroundColor = "#f59e0b";
+        } else {
+          indicator.style.width = "40%";
+          indicator.style.backgroundColor = "#6b7280";
+        }
+
+        // Root Cause
+        document.getElementById("root-cause").innerText =
+          data.payload.root_cause || "System operating normally";
+
+        // Predictive Maintenance
+        const pm = data.payload.predictive_maintenance || {};
+
+        document.getElementById("bearing_rul").innerText =
+          pm.bearing_rul ?? "--";
+
+        document.getElementById("coolant_rul").innerText =
+          pm.coolant_rul ?? "--";
+
+        document.getElementById("piping_rul").innerText = pm.piping_rul ?? "--";
+
+        // Recent Alerts History
+        const historyBody = document.getElementById("history-body");
+
+        historyBody.innerHTML = "";
+
+        const history = data.payload.anomaly_history || [];
+
+        history
+          .slice()
+          .reverse()
+          .forEach((item) => {
+            historyBody.innerHTML += `
+                <div class="alert-card">
+                    <div class="alert-title">
+                        ${item.anomaly_type}
+                    </div>
+
+                    <div class="alert-time">
+                        ${item.timestamp}
+                    </div>
+                </div>
+            `;
+          });
+
+        // Debug Logs
+        console.log("Severity:", severity);
+        console.log("Root Cause:", data.payload.root_cause);
+        console.log("PM:", pm);
+        console.log("History:", history);
+      };
+
+      socket.onerror = () => {
+        document.getElementById("status").innerText = "WEBSOCKET ERROR";
+      };
+
+      socket.onclose = () => {
+        document.getElementById("status").innerText = "DISCONNECTED";
+      };
+    </script>
+    
+  </body>
+</html>

@@ -1,0 +1,41 @@
+.history-container{
+    max-height: 180px;
+    overflow-y: auto;
+    padding-right: 5px;
+}
+.alert-card{
+    background:#374151;
+    padding:10px;
+    border-radius:8px;
+    margin-bottom:8px;
+}
+
+.alert-title{
+    font-weight:bold;
+    color:#f87171;
+}
+
+.alert-time{
+    font-size:12px;
+    color:#d1d5db;
+}
+.severity-container{
+    width:100%;
+    height:20px;
+    background:#374151;
+    border-radius:20px;
+    overflow:hidden;
+}
+
+#severity-indicator{
+    height:100%;
+    width:20%;
+    background:#22c55e;
+    transition:all .4s ease;
+}
+
+#severity-text{
+    margin-top:10px;
+    text-align:center;
+    font-weight:bold;
+}

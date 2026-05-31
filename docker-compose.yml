@@ -1,0 +1,24 @@
+version: "3.8"
+services:
+  # The FastAPI server (hosts the backend API and serves the frontend dashboard)
+  backend:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+    volumes:
+      - .:/app
+    restart: always
+  # The Telemetry streaming producer simulating industrial machines
+  producer:
+    build:
+      context: .
+      dockerfile: ./streaming/Dockerfile
+    environment:
+      - BACKEND_URL=ws://backend:8000/ws/stream
+    depends_on:
+      - backend
+    restart: always
