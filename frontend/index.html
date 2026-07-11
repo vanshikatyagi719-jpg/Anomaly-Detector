@@ -1,222 +1,749 @@
 <!doctype html>
 <html>
   <head>
-    <title>AegisIoT Dashboard</title>
-
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        background: #111827;
-        color: white;
-        padding: 20px;
-      }
-
-      h1 {
-        text-align: center;
-      }
-
-      .status-card {
-        background: #1f2937;
-        padding: 20px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-        text-align: center;
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 15px;
-      }
-
-      .card {
-        background: #1f2937;
-        padding: 20px;
-        border-radius: 10px;
-      }
-
-      .value {
-        font-size: 28px;
-        font-weight: bold;
-        margin-top: 10px;
-      }
-
-      #status {
-        font-size: 28px;
-        font-weight: bold;
-      }
-
-      #anomaly-type {
-        font-size: 24px;
-        font-weight: bold;
-        color: #ffb347;
-      }
-    </style>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AegisIoT — Enterprise Dashboard</title>
+    <!-- Link the main stylesheet (keeps JS/CSS separation). -->
+    <link rel="stylesheet" href="/style.css" />
   </head>
 
-  <body>
-    <h1>AegisIoT Monitoring Dashboard</h1>
-
-    <div class="status-card">
-      <h2>System Status</h2>
-      <div id="status">Connecting...</div>
-
-      <h3>Detected Anomaly</h3>
-      <div id="anomaly-type">NONE</div>
-    </div>
-
-    <div class="grid">
-      <div class="card">
-        <h3>Temperature</h3>
-        <div id="temp" class="value">--</div>
-      </div>
-
-      <div class="card">
-        <h3>Vibration</h3>
-        <div id="vibration" class="value">--</div>
-      </div>
-
-      <div class="card">
-        <h3>Pressure</h3>
-        <div id="pressure" class="value">--</div>
-      </div>
-
-      <div class="card">
-        <h3>Flow Rate</h3>
-        <div id="flow" class="value">--</div>
-      </div>
-      <div class="card history-card">
-        <h3>Recent Alerts</h3>
-        <div id="history-body" class="history-container"></div>
-      </div>
-      <div class="card">
-        <h3>Alert Severity</h3>
-        <div class="severity-container">
-          <div id="severity-indicator"></div>
+  <body class="dark">
+    <!-- Top bar / header -->
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="brand">AegisIoT</div>
+        <div class="dashboard-title">Operational Monitoring</div>
+        <div class="dashboard-subtitle">
+          Enterprise anomaly and asset health insights
         </div>
-        <div id="severity-text">NORMAL</div>
       </div>
-      <div class="card">
-        <h3>Root Cause Analysis</h3>
-        <div id="root-cause">Waiting....</div>
+      <div class="top-controls">
+        <div class="status-pill">
+          <span class="status-dot"></span>
+          <span class="status-text">Live monitoring</span>
+        </div>
       </div>
-      <div class="card">
-        <h3>Predictive Maintenance</h3>
-        <div>Bearing : <span id="bearing_rul">--</span>days</div>
-        <div>Coolant : <span id="coolant_rul">--</span>days</div>
-        <div>Piping : <span id="piping_rul">--</span>days</div>
-      </div>
-    </div>
+    </header>
 
-    <script>
-      const socket = new WebSocket("ws://localhost:8000/ws/stream");
+    <main class="dashboard-grid">
+      <section class="dashboard-content">
+        <div class="section-row kpi-row">
+          <article class="card kpi-card">
+            <div class="kpi-title">Temperature</div>
+            <div id="temp" class="kpi-value">-- °C</div>
+            <div id="temp-trend" class="kpi-trend">--</div>
+          </article>
+          <article class="card kpi-card">
+            <div class="kpi-title">Vibration</div>
+            <div id="vibration" class="kpi-value">-- mm/s</div>
+            <div id="vibration-trend" class="kpi-trend">--</div>
+          </article>
+          <article class="card kpi-card">
+            <div class="kpi-title">Pressure</div>
+            <div id="pressure" class="kpi-value">-- bar</div>
+            <div id="pressure-trend" class="kpi-trend">--</div>
+          </article>
+          <article class="card kpi-card">
+            <div class="kpi-title">Flow Rate</div>
+            <div id="flow" class="kpi-value">-- L/min</div>
+            <div id="flow-trend" class="kpi-trend">--</div>
+          </article>
+        </div>
 
-      socket.onopen = () => {
-        document.getElementById("status").innerText = "CONNECTED";
-      };
-
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        console.log(data);
-
-        if (data.type !== "telemetry") return;
-
-        const r = data.payload.readings;
-
-        // Sensor Cards
-        document.getElementById("temp").innerText =
-          r.temperature.toFixed(2) + " °C";
-
-        document.getElementById("vibration").innerText =
-          r.vibration.toFixed(3) + " mm/s";
-
-        document.getElementById("pressure").innerText =
-          r.pressure.toFixed(2) + " bar";
-
-        document.getElementById("flow").innerText =
-          r.flowRate.toFixed(2) + " L/min";
-
-        // Status
-        document.getElementById("status").innerText =
-          data.payload.status || "NORMAL";
-
-        // Anomaly Type
-        document.getElementById("anomaly-type").innerText =
-          data.payload.anomaly_type || "NONE";
-
-        // Severity
-        const severity = data.payload.severity || "NORMAL";
-
-        document.getElementById("severity-text").innerText = severity;
-
-        const indicator = document.getElementById("severity-indicator");
-
-        if (severity === "CRITICAL") {
-          indicator.style.width = "100%";
-          indicator.style.backgroundColor = "#ef4444";
-        } else if (severity === "WARNING") {
-          indicator.style.width = "70%";
-          indicator.style.backgroundColor = "#f59e0b";
-        } else {
-          indicator.style.width = "40%";
-          indicator.style.backgroundColor = "#6b7280";
-        }
-
-        // Root Cause
-        document.getElementById("root-cause").innerText =
-          data.payload.root_cause || "System operating normally";
-
-        // Predictive Maintenance
-        const pm = data.payload.predictive_maintenance || {};
-
-        document.getElementById("bearing_rul").innerText =
-          pm.bearing_rul ?? "--";
-
-        document.getElementById("coolant_rul").innerText =
-          pm.coolant_rul ?? "--";
-
-        document.getElementById("piping_rul").innerText = pm.piping_rul ?? "--";
-
-        // Recent Alerts History
-        const historyBody = document.getElementById("history-body");
-
-        historyBody.innerHTML = "";
-
-        const history = data.payload.anomaly_history || [];
-
-        history
-          .slice()
-          .reverse()
-          .forEach((item) => {
-            historyBody.innerHTML += `
-                <div class="alert-card">
-                    <div class="alert-title">
-                        ${item.anomaly_type}
-                    </div>
-
-                    <div class="alert-time">
-                        ${item.timestamp}
-                    </div>
+        <div class="section-row state-row">
+          <article class="card status-card system-status-compact">
+            <div class="card-title">System Status</div>
+            <div class="status-grid-compact">
+              <div class="status-item-compact">
+                <span class="status-label">Connection</span>
+                <div class="status-value">
+                  <span id="status" class="status-dot"></span>
+                  <span id="status-text">Connecting...</span>
                 </div>
-            `;
+              </div>
+              <div class="status-item-compact">
+                <span class="status-label">Health</span>
+                <span id="system-health" class="status-value-text">--%</span>
+              </div>
+              <div class="status-item-compact">
+                <span class="status-label">Updated</span>
+                <span id="last-update" class="status-value-text">--:--</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="card anomaly-card">
+            <div class="card-title">Detected Anomaly</div>
+            <div class="anomaly-state-row">
+              <span id="anomaly-type" class="anomaly-value">NONE</span>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <span id="anomaly-state" class="state-pill normal">NORMAL</span>
+                <span id="anomaly-mode" class="anomaly-mode-badge">--</span>
+              </div>
+            </div>
+            <div class="anomaly-detail">
+              <span id="anomaly-detail-text">System operating nominally. No anomalies detected.</span>
+            </div>
+          </article>
+
+          <article class="card severity-card">
+            <div class="card-title">Alert Severity</div>
+            <div id="severity-text" class="severity-badge normal">NORMAL</div>
+            <div class="severity-meter">
+              <div class="severity-meter-bar">
+                <span id="severity-meter-fill"></span>
+              </div>
+              <div id="severity-meter-label" class="severity-meta">
+                Alert intensity
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="section-row content-row">
+          <article class="card ai-card">
+            <div class="card-heading">
+              <div>
+                <div class="card-title">AI Maintenance Advisor</div>
+                <div class="status-subtext">
+                  Actionable guidance aligned to the current alert state.
+                </div>
+              </div>
+              <span id="advisor-severity" class="badge normal">NORMAL</span>
+            </div>
+            <div id="recommendation" class="advisor-body">
+              No recommendation yet.
+            </div>
+            <button id="ticket-btn" class="primary-button">
+              Generate Maintenance Ticket
+            </button>
+            <div id="ticket-output" class="ticket-output"></div>
+          </article>
+
+          <aside class="sidebar-column">
+            <article class="card escalation-card">
+              <div class="card-title">Alert Escalation</div>
+              <div id="escalation-level" class="escalation-level normal">
+                NORMAL
+              </div>
+              <div id="escalation-team" class="escalation-summary">
+                Team: --
+              </div>
+              <div id="escalation-response" class="escalation-summary">
+                Response: --
+              </div>
+              <div id="escalation-action" class="escalation-action">
+                Action: --
+              </div>
+              <div id="escalation-body" class="escalation-note"></div>
+            </article>
+
+            <article class="card alerts-card">
+              <div class="card-heading">
+                <div>
+                  <div class="card-title">Recent Alerts</div>
+                  <div class="status-subtext">
+                    Compact feed with severity, type, and escalation.
+                  </div>
+                </div>
+              </div>
+              <div id="history-body" class="alerts-feed"></div>
+            </article>
+
+            <article class="card explain-card">
+              <div class="card-title">Why was this anomaly detected?</div>
+              <div id="explain-body" class="explain-body">
+                <div class="explain-row">
+                  <span>Temperature z-score</span
+                  ><strong id="zscore-temp">--</strong>
+                </div>
+                <div class="explain-row">
+                  <span>Pressure z-score</span
+                  ><strong id="zscore-pres">--</strong>
+                </div>
+                <div class="explain-row">
+                  <span>Flow z-score</span><strong id="zscore-flow">--</strong>
+                </div>
+                <div class="explain-row">
+                  <span>Vibration z-score</span
+                  ><strong id="zscore-vib">--</strong>
+                </div>
+                <div class="explain-row">
+                  <span>Isolation Forest</span
+                  ><strong id="isolation-label">--</strong>
+                </div>
+                <div class="explain-row">
+                  <span>Confidence</span
+                  ><strong id="confidence-score">--</strong>
+                </div>
+              </div>
+            </article>
+          </aside>
+        </div>
+
+        <div class="section-row detail-row">
+          <article class="card root-card">
+            <div class="card-title">Root Cause Analysis</div>
+            <div id="root-cause" class="root-summary">
+              System operating normally.
+            </div>
+            <div id="root-cause-details" class="root-details" style="display: none;">
+              <div class="detail-item">
+                <span>Detected Anomaly:</span>
+                <strong id="rca-anomaly">--</strong>
+              </div>
+              <div class="detail-item">
+                <span>Sensor Deviations:</span>
+                <div id="rca-deviations" style="font-size: 0.9em; margin-top: 4px;">--</div>
+              </div>
+              <div class="detail-item">
+                <span>ML Score:</span>
+                <strong id="rca-ml-score">--</strong>
+              </div>
+              <div class="detail-item">
+                <span>Confidence:</span>
+                <strong id="rca-confidence">--</strong>
+              </div>
+            </div>
+          </article>
+
+          <article class="card maintenance-card">
+            <div class="card-title">Predictive Maintenance</div>
+            <div class="gauge-grid">
+              <div class="gauge-item">
+                <div class="gauge-label">Bearing</div>
+                <div class="gauge-value">
+                  <span id="bearing_rul">--</span> Days
+                  <span id="bearing_pct" style="font-size: 0.8em; margin-left: 8px;">--</span>
+                </div>
+                <div id="bearing_risk" class="gauge-status">--</div>
+                <div class="progress-bar">
+                  <span id="health-bearing-bar" class="progress-bar-fill"></span>
+                </div>
+              </div>
+              <div class="gauge-item">
+                <div class="gauge-label">Coolant</div>
+                <div class="gauge-value">
+                  <span id="coolant_rul">--</span> Days
+                  <span id="coolant_pct" style="font-size: 0.8em; margin-left: 8px;">--</span>
+                </div>
+                <div id="coolant_risk" class="gauge-status">--</div>
+                <div class="progress-bar">
+                  <span id="health-coolant-bar" class="progress-bar-fill"></span>
+                </div>
+              </div>
+              <div class="gauge-item">
+                <div class="gauge-label">Piping</div>
+                <div class="gauge-value">
+                  <span id="piping_rul">--</span> Days
+                  <span id="piping_pct" style="font-size: 0.8em; margin-left: 8px;">--</span>
+                </div>
+                <div id="piping_risk" class="gauge-status">--</div>
+                <div class="progress-bar">
+                  <span id="health-piping-bar" class="progress-bar-fill"></span>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <!-- Consolidated WebSocket Handler with All Fixes -->
+    <script>
+      // ============================================================
+      // DOM ELEMENT REGISTRY
+      // ============================================================
+      const dom = {
+        // KPI Values
+        kpiTemp: document.getElementById("temp"),
+        kpiVib: document.getElementById("vibration"),
+        kpiPres: document.getElementById("pressure"),
+        kpiFlow: document.getElementById("flow"),
+        tempTrend: document.getElementById("temp-trend"),
+        vibTrend: document.getElementById("vibration-trend"),
+        presTrend: document.getElementById("pressure-trend"),
+        flowTrend: document.getElementById("flow-trend"),
+        
+        // Status & Connection
+        statusDot: document.getElementById("status"),
+        statusText: document.getElementById("status-text"),
+        connStatus: document.getElementById("status"),
+        systemHealth: document.getElementById("system-health"),
+        lastUpdate: document.getElementById("last-update"),
+        
+        // Anomaly Display
+        anomalyType: document.getElementById("anomaly-type"),
+        anomalyState: document.getElementById("anomaly-state"),
+        
+        // Severity & Escalation
+        severityText: document.getElementById("severity-text"),
+        advisorSeverity: document.getElementById("advisor-severity"),
+        escalationLevel: document.getElementById("escalation-level"),
+        severityMeterFill: document.getElementById("severity-meter-fill"),
+        severityMeterLabel: document.getElementById("severity-meter-label"),
+        
+        // Recommendations & Analysis
+        recommendation: document.getElementById("recommendation"),
+        rootCause: document.getElementById("root-cause"),
+        rootCauseDetails: document.getElementById("root-cause-details"),
+        rcaAnomaly: document.getElementById("rca-anomaly"),
+        rcaDeviations: document.getElementById("rca-deviations"),
+        rcaMlScore: document.getElementById("rca-ml-score"),
+        rcaConfidence: document.getElementById("rca-confidence"),
+        
+        // Escalation Details
+        escalationTeam: document.getElementById("escalation-team"),
+        escalationResponse: document.getElementById("escalation-response"),
+        escalationAction: document.getElementById("escalation-action"),
+        escalationBody: document.getElementById("escalation-body"),
+        
+        // History & Alerts
+        historyBody: document.getElementById("history-body"),
+        
+        // Explainability Panel
+        zscoreTemp: document.getElementById("zscore-temp"),
+        zscorePres: document.getElementById("zscore-pres"),
+        zscoreFlow: document.getElementById("zscore-flow"),
+        zscoreVib: document.getElementById("zscore-vib"),
+        isolationLabel: document.getElementById("isolation-label"),
+        confidenceScore: document.getElementById("confidence-score"),
+        
+        // Predictive Maintenance Gauges
+        bearingBar: document.getElementById("health-bearing-bar"),
+        bearingRul: document.getElementById("bearing_rul"),
+        bearingPct: document.getElementById("bearing_pct"),
+        bearingRisk: document.getElementById("bearing_risk"),
+        
+        coolantBar: document.getElementById("health-coolant-bar"),
+        coolantRul: document.getElementById("coolant_rul"),
+        coolantPct: document.getElementById("coolant_pct"),
+        coolantRisk: document.getElementById("coolant_risk"),
+        
+        pipingBar: document.getElementById("health-piping-bar"),
+        pipingRul: document.getElementById("piping_rul"),
+        pipingPct: document.getElementById("piping_pct"),
+        pipingRisk: document.getElementById("piping_risk"),
+        
+        // Ticket Generator
+        ticketBtn: document.getElementById("ticket-btn"),
+        ticketOutput: document.getElementById("ticket-output"),
+      };
+
+      // ============================================================
+      // FRONTEND STATE TRACKER (Matches Backend Persistence)
+      // ============================================================
+      const frontendState = {
+        anomalyCount: 0,
+        normalCount: 0,
+        currentState: "NORMAL",
+        previousState: "NORMAL",
+        persistedAnomalyType: "NONE",
+        lastSeverity: "NORMAL",
+        
+        updateFromPayload(payload) {
+          this.anomalyCount = payload.anomaly_count || 0;
+          this.normalCount = payload.normal_count || 0;
+          this.currentState = payload.current_system_state || "NORMAL";
+          this.previousState = payload.previous_state || "NORMAL";
+          this.persistedAnomalyType = payload.anomaly_type || "NONE";
+          this.lastSeverity = payload.severity || "NORMAL";
+        },
+        
+        getDisplayAnomaly() {
+          return this.currentState === "ANOMALY_DETECTED" 
+            ? this.persistedAnomalyType 
+            : "NONE";
+        },
+        
+        log() {
+          console.debug("[Frontend State]", {
+            state: this.currentState,
+            anomaly: this.persistedAnomalyType,
+            anomaly_count: this.anomalyCount,
+            normal_count: this.normalCount,
+            severity: this.lastSeverity,
           });
-
-        // Debug Logs
-        console.log("Severity:", severity);
-        console.log("Root Cause:", data.payload.root_cause);
-        console.log("PM:", pm);
-        console.log("History:", history);
+        }
       };
 
-      socket.onerror = () => {
-        document.getElementById("status").innerText = "WEBSOCKET ERROR";
+      // ============================================================
+      // UTILITY FUNCTIONS
+      // ============================================================
+      function formatKpi(value, unit) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+          return `-- ${unit}`;
+        }
+        return `${Number(value).toFixed(1)} ${unit}`;
+      }
+
+      function updateKpi(element, value, unit) {
+        if (!element) return;
+        element.textContent = formatKpi(value, unit);
+      }
+
+      function formatTrend(current, previous) {
+        if (previous === null || previous === undefined || current === null || current === undefined) {
+          return "—";
+        }
+        const delta = Number(current) - Number(previous);
+        const percent = previous === 0 ? 0 : (delta / Number(previous)) * 100;
+        const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "—";
+        return `${arrow} ${Math.abs(percent).toFixed(1)}%`;
+      }
+
+      function getSeverityClass(severity) {
+        if (severity === "CRITICAL") return "critical";
+        if (severity === "HIGH") return "warning";
+        return "normal";
+      }
+
+      function updateSeverityUI(severity) {
+        const severityClass = getSeverityClass(severity);
+        
+        if (dom.severityText) {
+          dom.severityText.textContent = severity;
+          dom.severityText.className = `severity-badge ${severityClass}`;
+        }
+        
+        if (dom.advisorSeverity) {
+          dom.advisorSeverity.textContent = severity;
+          dom.advisorSeverity.className = `badge ${severityClass}`;
+        }
+        
+        if (dom.escalationLevel) {
+          dom.escalationLevel.textContent = severity;
+          dom.escalationLevel.className = `escalation-level ${severityClass}`;
+        }
+        
+        if (dom.severityMeterFill) {
+          dom.severityMeterFill.style.width = 
+            severity === "CRITICAL" ? "100%" :
+            severity === "HIGH" ? "72%" :
+            severity === "WARNING" ? "50%" : "18%";
+        }
+        
+        if (dom.severityMeterLabel) {
+          dom.severityMeterLabel.textContent = `${severity} alert level`;
+        }
+      }
+
+      // ============================================================
+      // CONTENT RENDERERS
+      // ============================================================
+      function setRecommendation(content) {
+        if (!dom.recommendation) return;
+        
+        if (!content) {
+          dom.recommendation.innerHTML = 
+            '<div class="rec-empty">No active maintenance recommendation at this time.</div>';
+          return;
+        }
+        
+        const parts = Array.isArray(content.parts) ? content.parts : [];
+        const actions = Array.isArray(content.actions) ? content.actions : [];
+        
+        dom.recommendation.innerHTML = `
+          <div class="rec-header">
+            <div class="rec-title">${content.title || "AI Advisory"}</div>
+            <div class="rec-summary">${content.summary || content.description || "Review the current system state."}</div>
+          </div>
+          ${actions.length ? `<ul class="rec-checklist">${actions.map((action) => `<li>${action}</li>`).join("")}</ul>` : ''}
+          <div class="rec-footer"><strong>Parts:</strong> ${parts.length ? parts.join(", ") : "N/A"}</div>
+        `;
+      }
+
+      function displayRootCauseAnalysis(payload) {
+        if (!dom.rootCause) return;
+        
+        const rootCauseText = payload.root_cause || "System operating normally.";
+        dom.rootCause.textContent = rootCauseText;
+        
+        // Update detailed RCA panel
+        if (dom.rootCauseDetails && payload.current_system_state === "ANOMALY_DETECTED") {
+          dom.rootCauseDetails.style.display = "block";
+          
+          if (dom.rcaAnomaly) dom.rcaAnomaly.textContent = payload.anomaly_type || "UNKNOWN";
+          
+          if (dom.rcaDeviations && payload.explainability?.z_scores) {
+            const z = payload.explainability.z_scores;
+            const deviations = [];
+            // Safely parse z-scores as numbers (may be strings from backend)
+            const temp_z = parseFloat(z.temperature) || 0;
+            const vib_z = parseFloat(z.vibration) || 0;
+            const pres_z = parseFloat(z.pressure) || 0;
+            const flow_z = parseFloat(z.flowRate) || 0;
+            
+            if (Math.abs(temp_z) > 1.5) deviations.push(`Temperature: ${temp_z.toFixed(2)}σ`);
+            if (Math.abs(vib_z) > 1.5) deviations.push(`Vibration: ${vib_z.toFixed(2)}σ`);
+            if (Math.abs(pres_z) > 1.5) deviations.push(`Pressure: ${pres_z.toFixed(2)}σ`);
+            if (Math.abs(flow_z) > 1.5) deviations.push(`Flow Rate: ${flow_z.toFixed(2)}σ`);
+            dom.rcaDeviations.textContent = deviations.length > 0 ? deviations.join(", ") : "Multivariate deviation detected";
+          }
+          
+          if (dom.rcaMlScore) {
+            dom.rcaMlScore.textContent = payload.explainability?.ml_anomaly ? "Anomaly Detected" : "Within Normal Range";
+          }
+          
+          if (dom.rcaConfidence) {
+            dom.rcaConfidence.textContent = payload.explainability?.confidence_pct || "--";
+          }
+        } else if (dom.rootCauseDetails) {
+          dom.rootCauseDetails.style.display = "none";
+        }
+      }
+
+      function renderAlertHistory(history) {
+        if (!dom.historyBody) return;
+        
+        if (!Array.isArray(history) || history.length === 0) {
+          dom.historyBody.innerHTML = '<div class="alerts-empty">No alert history available.</div>';
+          return;
+        }
+        
+        dom.historyBody.innerHTML = history
+          .slice(-10)
+          .reverse()
+          .map((item) => {
+            const severityClass = getSeverityClass(item.severity);
+            const team = item.escalation?.team || "Operations";
+            const timestamp = item.timestamp ? item.timestamp.split(/\s+/)[1] || item.timestamp : "--:--";
+            return `
+              <div class="alert-row ${severityClass}">
+                <div class="alert-left">
+                  <span class="alert-severity ${severityClass}">${item.severity || "NORMAL"}</span>
+                  <div class="alert-title">${item.anomaly_type}</div>
+                  <div class="alert-meta">${timestamp} • Escalated → ${team}</div>
+                </div>
+                <div class="alert-right">${item.escalation?.level || "NORMAL"}</div>
+              </div>
+            `;
+          })
+          .join("");
+      }
+
+      function updateGaugeProgress(barEl, rulEl, pctEl, riskEl, healthValue) {
+        const percent = Math.max(0, Math.min(100, healthValue));
+        
+        if (barEl) {
+          barEl.style.width = `${percent}%`;
+          barEl.className = `progress-bar-fill ${
+            percent >= 80 ? "normal" :
+            percent >= 55 ? "warning" : "critical"
+          }`;
+        }
+        
+        if (rulEl) rulEl.textContent = `${Math.floor(percent / 2)}`;
+        if (pctEl) pctEl.textContent = `${Math.round(percent)}%`;
+        if (riskEl) {
+          riskEl.textContent = percent >= 80 ? "LOW RISK" : percent >= 55 ? "MEDIUM RISK" : "HIGH RISK";
+          riskEl.className = `gauge-status ${
+            percent >= 80 ? "normal" :
+            percent >= 55 ? "warning" : "critical"
+          }`;
+        }
+      }
+
+      function generateTicket(payload) {
+        if (!dom.ticketOutput) return;
+        
+        if (!payload || !payload.anomaly_type) {
+          dom.ticketOutput.innerHTML = '<div class="ticket-empty">No active anomaly to generate ticket.</div>';
+          return;
+        }
+        
+        const ticketId = `TCKT-${Date.now().toString().slice(-6)}`;
+        const anomaly = payload.anomaly_type || "NONE";
+        const severity = payload.severity || "NORMAL";
+        const team = payload.escalation?.team || "Operations";
+        
+        dom.ticketOutput.innerHTML = `
+          <div class="ticket-card">
+            <div class="ticket-row"><span>ID</span><strong>${ticketId}</strong></div>
+            <div class="ticket-row"><span>Issue</span><strong>${anomaly}</strong></div>
+            <div class="ticket-row"><span>Priority</span><strong>${severity}</strong></div>
+            <div class="ticket-row"><span>Assigned</span><strong>${team}</strong></div>
+            <div class="ticket-row"><span>Created</span><strong>${new Date().toLocaleString()}</strong></div>
+          </div>
+        `;
+      }
+
+      // ============================================================
+      // WEBSOCKET CONNECTION
+      // ============================================================
+      const wsUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/stream";
+      const socket = new WebSocket(wsUrl);
+      
+      let latestPayload = null;
+      const previousReadings = {
+        temperature: null,
+        vibration: null,
+        pressure: null,
+        flowRate: null,
       };
 
-      socket.onclose = () => {
-        document.getElementById("status").innerText = "DISCONNECTED";
-      };
+      socket.addEventListener("open", () => {
+        console.log("[WS] Connected to streaming gateway");
+        if (dom.statusText) dom.statusText.textContent = "CONNECTED";
+        if (dom.statusDot) dom.statusDot.className = "status-dot success";
+      });
+
+      socket.addEventListener("message", (evt) => {
+        try {
+          const data = JSON.parse(evt.data);
+          if (data.type !== "telemetry") return;
+          
+          const payload = data.payload || {};
+          latestPayload = payload;
+          const readings = payload.readings || {};
+          const analytics = payload.analytics || {};
+          const explain = payload.explainability || {};
+          
+          // Update frontend state tracker
+          frontendState.updateFromPayload(payload);
+          frontendState.log();
+          
+          // ========== KPI VALUES ==========
+          updateKpi(dom.kpiTemp, readings.temperature, "°C");
+          updateKpi(dom.kpiVib, readings.vibration, "mm/s");
+          updateKpi(dom.kpiPres, readings.pressure, "bar");
+          updateKpi(dom.kpiFlow, readings.flowRate, "L/min");
+          
+          // ========== TRENDS ==========
+          if (dom.tempTrend) dom.tempTrend.textContent = formatTrend(readings.temperature, previousReadings.temperature);
+          if (dom.vibTrend) dom.vibTrend.textContent = formatTrend(readings.vibration, previousReadings.vibration);
+          if (dom.presTrend) dom.presTrend.textContent = formatTrend(readings.pressure, previousReadings.pressure);
+          if (dom.flowTrend) dom.flowTrend.textContent = formatTrend(readings.flowRate, previousReadings.flowRate);
+          
+          previousReadings.temperature = readings.temperature;
+          previousReadings.vibration = readings.vibration;
+          previousReadings.pressure = readings.pressure;
+          previousReadings.flowRate = readings.flowRate;
+          
+          // ========== STATUS UPDATE ==========
+          const currentState = payload.current_system_state || "NORMAL";
+          const severity = payload.severity || "NORMAL";
+          const anomaly = frontendState.getDisplayAnomaly();
+          
+          if (dom.systemHealth) {
+            dom.systemHealth.textContent = currentState === "ANOMALY_DETECTED" ? "68%" : "96%";
+          }
+          if (dom.lastUpdate) {
+            dom.lastUpdate.textContent = new Date().toLocaleTimeString();
+          }
+          
+          // ========== ANOMALY TYPE DISPLAY ==========
+          if (dom.anomalyType) {
+            const anomalyType = payload.anomaly_type || "NONE";
+            const detectionMode = payload.anomaly_detection_mode || "NORMAL";
+            
+            dom.anomalyType.textContent = anomalyType;
+            console.log("[UI] Anomaly Type:", anomalyType, "| Mode:", detectionMode, "| State:", currentState);
+            
+            // Update anomaly mode badge
+            const modeEl = document.getElementById("anomaly-mode");
+            if (modeEl) {
+              if (detectionMode === "PERSISTED") {
+                modeEl.textContent = "PERSISTED";
+                modeEl.className = "anomaly-mode-badge persisted";
+              } else if (detectionMode === "DETECTED_RAW") {
+                modeEl.textContent = "DETECTED (Raw)";
+                modeEl.className = "anomaly-mode-badge detected";
+              } else {
+                modeEl.textContent = "Normal";
+                modeEl.className = "anomaly-mode-badge normal";
+              }
+            }
+            
+            // Update detail text
+            const detailEl = document.getElementById("anomaly-detail-text");
+            if (detailEl) {
+              const anomalyCount = payload.anomaly_count ?? 0;  // Ensure not null
+              if (anomalyType === "NONE") {
+                detailEl.textContent = "System operating nominally. No anomalies detected.";
+              } else if (detectionMode === "DETECTED_RAW") {
+                const remaining = Math.max(0, 3 - anomalyCount);
+                detailEl.textContent = `Anomaly detected in current window. Awaiting ${remaining} more consecutive readings to persist.`;
+              } else if (detectionMode === "PERSISTED") {
+                detailEl.textContent = `Persistent anomaly state confirmed (${anomalyCount}/3 detections).`;
+              }
+            }
+          }
+          
+          if (dom.anomalyState) {
+            const stateText = currentState === "ANOMALY_DETECTED" ? "ANOMALY" : "NORMAL";
+            dom.anomalyState.textContent = stateText;
+            dom.anomalyState.className = `state-pill ${currentState === "ANOMALY_DETECTED" ? "alert" : "normal"}`;
+          }
+          
+          // ========== SEVERITY & ESCALATION ==========
+          updateSeverityUI(severity);
+          
+          // ========== RECOMMENDATIONS & ANALYSIS ==========
+          setRecommendation(payload.recommendation);
+          displayRootCauseAnalysis(payload);
+          
+          // ========== ESCALATION DETAILS ==========
+          const escalation = payload.escalation || {};
+          if (dom.escalationTeam) dom.escalationTeam.textContent = `Team: ${escalation.team || "Operations"}`;
+          if (dom.escalationResponse) dom.escalationResponse.textContent = `Response: ${escalation.response_time || "Assess within 30 minutes"}`;
+          if (dom.escalationAction) dom.escalationAction.textContent = `Action: ${escalation.action || "Review and execute corrective procedure."}`;
+          if (dom.escalationBody) dom.escalationBody.textContent = escalation.summary || "Escalation priority based on current severity.";
+          
+          // ========== ALERT HISTORY ==========
+          renderAlertHistory(payload.anomaly_history || []);
+          
+          // ========== EXPLAINABILITY PANEL ==========
+          if (explain.z_scores) {
+            const z = explain.z_scores;
+            if (dom.zscoreTemp) dom.zscoreTemp.textContent = (parseFloat(z.temperature) || 0).toFixed(2);
+            if (dom.zscorePres) dom.zscorePres.textContent = (parseFloat(z.pressure) || 0).toFixed(2);
+            if (dom.zscoreFlow) dom.zscoreFlow.textContent = (parseFloat(z.flowRate) || 0).toFixed(2);
+            if (dom.zscoreVib) dom.zscoreVib.textContent = (parseFloat(z.vibration) || 0).toFixed(2);
+          }
+          
+          if (dom.isolationLabel) dom.isolationLabel.textContent = explain.isolation_label || "--";
+          if (dom.confidenceScore) dom.confidenceScore.textContent = explain.confidence_pct || "--";
+          
+          // ========== PREDICTIVE MAINTENANCE GAUGES ==========
+          const health = payload.asset_health || {};
+          updateGaugeProgress(
+            dom.bearingBar, dom.bearingRul, dom.bearingPct, dom.bearingRisk,
+            health.bearing || 98
+          );
+          updateGaugeProgress(
+            dom.coolantBar, dom.coolantRul, dom.coolantPct, dom.coolantRisk,
+            health.coolant || 94
+          );
+          updateGaugeProgress(
+            dom.pipingBar, dom.pipingRul, dom.pipingPct, dom.pipingRisk,
+            health.piping || 97
+          );
+          
+          console.debug("[WS] Payload processed successfully");
+        } catch (error) {
+          console.error("[WS] Message processing error:", error);
+        }
+      });
+
+      socket.addEventListener("close", () => {
+        console.log("[WS] Connection closed. Reconnecting in 3s...");
+        if (dom.statusText) dom.statusText.textContent = "DISCONNECTED";
+        if (dom.statusDot) dom.statusDot.className = "status-dot error";
+        setTimeout(() => window.location.reload(), 3000);
+      });
+
+      socket.addEventListener("error", (error) => {
+        console.error("[WS] Connection error:", error);
+        if (dom.statusText) dom.statusText.textContent = "CONNECTION ERROR";
+        if (dom.statusDot) dom.statusDot.className = "status-dot error";
+      });
+
+      // ========== EVENT LISTENERS ==========
+      if (dom.ticketBtn) {
+        dom.ticketBtn.addEventListener("click", () => generateTicket(latestPayload));
+      }
     </script>
-    
   </body>
 </html>

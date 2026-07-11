@@ -14,6 +14,48 @@ from datetime import datetime
 anomaly_history = []
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from anomaly_detection import detector
+
+
+# Alert escalation helper
+def get_escalation_action(severity: str, anomaly_type: str) -> dict:
+    s = (severity or "NORMAL").upper()
+    if s == "NORMAL":
+        return {
+            "level": "NORMAL",
+            "action": "Monitor and log; no immediate action required.",
+            "team": "Operations",
+            "response_time": "N/A",
+        }
+    if s == "WARNING":
+        return {
+            "level": "WARNING",
+            "action": "Notify maintenance team and schedule inspection.",
+            "team": "Maintenance",
+            "response_time": "4 hours",
+        }
+    if s == "HIGH":
+        return {
+            "level": "HIGH",
+            "action": "Immediate engineer inspection recommended.",
+            "team": "Engineering",
+            "response_time": "1 hour",
+        }
+    if s == "CRITICAL":
+        return {
+            "level": "CRITICAL",
+            "action": "Recommend emergency shutdown and dispatch emergency response.",
+            "team": "Emergency Response",
+            "response_time": "Immediate",
+        }
+    # default fallback
+    return {
+        "level": "NORMAL",
+        "action": "Monitor and log; no immediate action required.",
+        "team": "Operations",
+        "response_time": "N/A",
+    }
+
+
 from backend.agent_diagnostics import AgentDiagnosticEngine
 
 app = FastAPI(title="AegisIoT Agentic Monitoring API")
@@ -32,9 +74,64 @@ class OperationalState:
     def __init__(self):
         self.active_fault = "NORMAL"
         self.asset_health = {"bearing": 98.0, "coolant": 94.0, "piping": 97.0}
+        self.current_system_state = "NORMAL"
+        self.previous_system_state = "NORMAL"
+        self.anomaly_count = 0
+        self.normal_count = 0
+        self.last_observed_anomaly_type = "NONE"
+        self.persisted_anomaly_type = "NONE"
+        self.current_severity = "NORMAL"
+        self.last_recommendation = None
+        self.last_root_cause = "System operating normally."
+        self.last_explainability = {}
+
+    def update_persistence(
+        self, raw_anomaly: bool, raw_severity: str, anomaly_type: str = None
+    ):
+        prev_state = self.current_system_state
+
+        if raw_anomaly:
+            self.anomaly_count += 1
+            self.normal_count = 0
+            if anomaly_type:
+                self.last_observed_anomaly_type = anomaly_type
+            if raw_severity and raw_severity != "NORMAL":
+                self.current_severity = raw_severity
+        else:
+            self.normal_count += 1
+            self.anomaly_count = 0
+
+        if self.current_system_state == "NORMAL" and self.anomaly_count >= 3:
+            self.previous_system_state = prev_state
+            self.current_system_state = "ANOMALY_DETECTED"
+            self.persisted_anomaly_type = (
+                self.last_observed_anomaly_type or "MULTIVARIATE_ANOMALY"
+            )
+            if self.current_severity == "NORMAL" and raw_severity != "NORMAL":
+                self.current_severity = raw_severity
+        elif self.current_system_state == "ANOMALY_DETECTED" and self.normal_count >= 5:
+            self.previous_system_state = prev_state
+            self.current_system_state = "NORMAL"
+            self.persisted_anomaly_type = "NONE"
+            self.current_severity = "NORMAL"
+            self.last_recommendation = None
+            self.last_root_cause = "System operating normally."
+            self.last_explainability = {}
+
+        if prev_state != self.current_system_state:
+            print(
+                f"[STATE TRANSITION] previous_state={prev_state} new_state={self.current_system_state} "
+                f"anomaly_count={self.anomaly_count} normal_count={self.normal_count} "
+                f"persisted_anomaly_type={self.persisted_anomaly_type} severity={self.current_severity}"
+            )
+
+        return self.current_system_state
 
 
 state = OperationalState()
+
+# Repository root (used for safe absolute file paths)
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # WebSocket Client Manager
@@ -55,13 +152,18 @@ class ConnectionManager:
             )
 
     async def broadcast(self, message: str):
-        # Broadcast to all connected clients
-        for connection in self.active_connections:
+        # Broadcast to all connected clients. Remove any dead sockets.
+        to_remove = []
+        for connection in list(self.active_connections):
             try:
                 await connection.send_text(message)
-            except Exception:
-                # Remove dead sockets
-                pass
+            except Exception as e:
+                # Mark dead sockets for removal and log the error
+                print(f"[WS] Broadcast error, removing connection: {e}")
+                to_remove.append(connection)
+
+        for conn in to_remove:
+            self.disconnect(conn)
 
 
 manager = ConnectionManager()
@@ -160,29 +262,29 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Apply degradation logic to health metrics based on active fault
                 if state.active_fault == "BEARING_WEAR":
                     state.asset_health["bearing"] = max(
-                        22.0, state.asset_health["bearing"] - 0.15
+                        22.0, min(100, state.asset_health["bearing"] - 0.15)
                     )
                 elif state.active_fault == "COOLANT_LEAK":
                     state.asset_health["coolant"] = max(
-                        12.0, state.asset_health["coolant"] - 0.20
+                        12.0, min(100, state.asset_health["coolant"] - 0.20)
                     )
                 elif state.active_fault == "PIPE_BLOCKAGE":
                     state.asset_health["piping"] = max(
-                        34.0, state.asset_health["piping"] - 0.12
+                        34.0, min(100, state.asset_health["piping"] - 0.12)
                     )
                 else:
-                    # Nominal: Slowly recover health
+                    # Nominal: Slowly recover health (with proper bounds)
                     if state.asset_health["bearing"] < 98.0:
                         state.asset_health["bearing"] = min(
-                            98.0, state.asset_health["bearing"] + 0.25
+                            98.0, max(0, state.asset_health["bearing"] + 0.25)
                         )
                     if state.asset_health["coolant"] < 94.0:
                         state.asset_health["coolant"] = min(
-                            94.0, state.asset_health["coolant"] + 0.25
+                            94.0, max(0, state.asset_health["coolant"] + 0.25)
                         )
                     if state.asset_health["piping"] < 97.0:
                         state.asset_health["piping"] = min(
-                            97.0, state.asset_health["piping"] + 0.25
+                            97.0, max(0, state.asset_health["piping"] + 0.25)
                         )
 
                 # Append live health variables to payload
@@ -199,7 +301,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 }
 
                 # Run the math Z-Score and Isolation Forest anomaly detector on the server!
-                # Run anomaly detector
                 readings = {
                     "temperature": data["payload"]["readings"]["temperature"],
                     "vibration": data["payload"]["readings"]["vibration"],
@@ -208,90 +309,191 @@ async def websocket_endpoint(websocket: WebSocket):
                 }
 
                 analytics = detector.score_telemetry(readings)
+                data["payload"]["analytics"] = analytics
                 print("GLOBAL ANOMALY:", analytics["global_anomaly"])
                 print("ML ANOMALY:", analytics["ml_anomaly"])
                 print("ALARMS:", analytics["alarms"])
 
-                if analytics["global_anomaly"]:
-                    max_z = max(abs(v) for v in analytics["z_scores"].values())
-
+                raw_anomaly = analytics["global_anomaly"]
+                raw_anomaly_type = "MULTIVARIATE_ANOMALY"  # Guaranteed default
+                raw_severity = "NORMAL"
+                max_z = 0
+                if raw_anomaly:
+                    z_scores = analytics.get("z_scores", {}) or {}
+                    max_z = max(abs(v) for v in z_scores.values()) if z_scores else 0
                     if max_z > 5:
-                      severity = "CRITICAL"
+                        raw_severity = "CRITICAL"
                     elif max_z > 3:
-                      severity = "WARNING"
-                    else:
-                     severity = "HIGH"
-                else:
-                        severity = "NORMAL"
-                        
-                data["payload"]["severity"] = severity
-                if analytics["global_anomaly"]:
-                    data["payload"]["status"] = "ANOMALY_DETECTED"
-                else:
-                    data["payload"]["status"] = "NORMAL"
-                print("READINGS:", readings)
-                print("ANALYTICS:", analytics)
+                        raw_severity = "HIGH"
+                    elif max_z > 2.5:
+                        raw_severity = "WARNING"
 
-                print("STATUS:", data["payload"]["status"])
-
-                anomaly_type = None
-
-                if analytics["global_anomaly"]:
-
-                    z_scores = analytics["z_scores"]
-
-                    max_sensor = max(z_scores, key=lambda k: abs(z_scores[k]))
-
+                    significant = {k: v for k, v in z_scores.items() if abs(v) > 2.5}
                     anomaly_map = {
                         "temperature": "TEMPERATURE_ANOMALY",
                         "vibration": "VIBRATION_ANOMALY",
                         "pressure": "PRESSURE_ANOMALY",
                         "flowRate": "FLOWRATE_ANOMALY",
                     }
+                    if significant:
+                        max_sensor = max(significant, key=lambda k: abs(significant[k]))
+                        raw_anomaly_type = anomaly_map.get(max_sensor, "MULTIVARIATE_ANOMALY")
 
-                    anomaly_type = anomaly_map[max_sensor]
-                    data["payload"]["anomaly_type"] = anomaly_type
+                confidence_pct = (
+                    min(99, max(65, 70 + int(max_z * 3))) if raw_anomaly else 95
+                )
+                # Ensure z_scores always exists and has valid values
+                z_scores_payload = analytics.get("z_scores", {})
+                if not z_scores_payload or not isinstance(z_scores_payload, dict):
+                    z_scores_payload = {"temperature": 0, "vibration": 0, "pressure": 0, "flowRate": 0}
+                
+                explainability = {
+                    "z_scores": z_scores_payload,
+                    "ml_anomaly": analytics.get("ml_anomaly", False),
+                    "confidence_pct": f"{confidence_pct}%",
+                    "isolation_label": (
+                        "Isolation Forest detected"
+                        if analytics.get("ml_anomaly")
+                        else "No isolation point detected"
+                    ),
+                }
 
-                    root_cause = "System operating normally"
+                state.update_persistence(raw_anomaly, raw_severity, raw_anomaly_type)
+                data["payload"]["severity"] = state.current_severity
+                data["payload"]["status"] = state.current_system_state
+                data["payload"]["current_system_state"] = state.current_system_state
+                data["payload"]["previous_state"] = state.previous_system_state
+                data["payload"]["anomaly_count"] = state.anomaly_count
+                data["payload"]["normal_count"] = state.normal_count
+                data["payload"]["active_fault"] = state.active_fault
+                data["payload"]["explainability"] = explainability
 
-                    if anomaly_type == "TEMPERATURE_ANOMALY":
-                        root_cause = "Temperature reading is significantly deviating from normal baseline, indicating potential overheating or cooling system failure."
-                    elif anomaly_type == "VIBRATION_ANOMALY":
-                        root_cause = "Vibration reading is significantly deviating from normal baseline, indicating potential mechanical wear or imbalance."
-                    elif anomaly_type == "PRESSURE_ANOMALY":
-                        root_cause = "Pressure reading is significantly deviating from normal baseline, indicating potential system malfunction or blockage."
-                    elif anomaly_type == "FLOWRATE_ANOMALY":
-                        root_cause = "Flow rate reading is significantly deviating from normal baseline, indicating potential system malfunction or blockage."
-                    elif anomaly_type == "MULTIVARIATE_ANOMALY":
-                        root_cause = "Multiple sensor readings are deviating from normal baselines, indicating potential systemic failure or cascading issues."
+                if state.current_system_state == "ANOMALY_DETECTED":
+                    data["payload"]["anomaly_type"] = (
+                        state.persisted_anomaly_type or "MULTIVARIATE_ANOMALY"
+                    )
+                    data["payload"]["anomaly_detection_mode"] = "PERSISTED"
+                elif raw_anomaly:
+                    # Show detected anomaly even if not yet persisted (raw detection)
+                    data["payload"]["anomaly_type"] = raw_anomaly_type or "MULTIVARIATE_ANOMALY"
+                    data["payload"]["anomaly_detection_mode"] = "DETECTED_RAW"
+                else:
+                    data["payload"]["anomaly_type"] = "NONE"
+                    data["payload"]["anomaly_detection_mode"] = "NORMAL"
 
+                effective_anomaly_type = None
+                if state.current_system_state == "ANOMALY_DETECTED":
+                    effective_anomaly_type = state.persisted_anomaly_type
+                elif raw_anomaly:
+                    effective_anomaly_type = raw_anomaly_type
+
+                # ==================== DEBUGGING LOGS ====================
+                print(f"[ANOMALY PIPELINE] Current State: {state.current_system_state}")
+                print(f"[ANOMALY PIPELINE] Persisted Type: {state.persisted_anomaly_type}")
+                print(f"[ANOMALY PIPELINE] Raw Anomaly: {raw_anomaly}, Raw Type: {raw_anomaly_type}")
+                print(f"[ANOMALY PIPELINE] Effective Type: {effective_anomaly_type}")
+                print(f"[ANOMALY PIPELINE] Payload Anomaly Type: {data['payload']['anomaly_type']}")
+                print(f"[ANOMALY PIPELINE] Detection Mode: {data['payload'].get('anomaly_detection_mode')}")
+
+                if effective_anomaly_type:
+                    if raw_anomaly or not state.last_recommendation:
+                        state.last_recommendation = (
+                            await AgentDiagnosticEngine.get_recommendation(
+                                effective_anomaly_type, readings
+                            )
+                        )
+                    recommendation = state.last_recommendation
+                    root_cause = "System operating normally."
+
+                    if effective_anomaly_type == "TEMPERATURE_ANOMALY":
+                        root_cause = "Temperature is deviating beyond expected bounds, indicating potential overheating or cooling failure."
+                    elif effective_anomaly_type == "VIBRATION_ANOMALY":
+                        root_cause = "Vibration levels are outside safe operating limits, indicating possible bearing wear or mechanical imbalance."
+                    elif effective_anomaly_type == "PRESSURE_ANOMALY":
+                        root_cause = "Pressure readings are abnormal, indicating possible blockage, leak, or valve malfunction."
+                    elif effective_anomaly_type == "FLOWRATE_ANOMALY":
+                        root_cause = "Flow rate measures outside expected thresholds, indicating flow restriction or pump degradation."
+                    elif effective_anomaly_type == "MULTIVARIATE_ANOMALY":
+                        root_cause = "Multiple telemetry signals are in abnormal states, indicating a systemic deviation across the asset."
+
+                    state.last_root_cause = root_cause
+                    state.last_explainability = explainability
+                    data["payload"]["recommendation"] = recommendation
                     data["payload"]["root_cause"] = root_cause
-                if anomaly_type != None:
+                else:
+                    data["payload"]["recommendation"] = (
+                        await AgentDiagnosticEngine.get_recommendation(
+                            "NORMAL", readings
+                        )
+                    )
+                    data["payload"]["root_cause"] = "System operating normally."
+                    state.last_root_cause = data["payload"]["root_cause"]
+                    state.last_explainability = explainability
 
+                if raw_anomaly and effective_anomaly_type:
                     record = {
-                        "timestamp": datetime.now().strftime("%Y-%m-%d   %H:%M:%S"),
-                        "anomaly_type": anomaly_type,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "anomaly_type": effective_anomaly_type,
+                        "severity": state.current_severity,
                         "temperature": readings["temperature"],
                         "vibration": readings["vibration"],
                         "pressure": readings["pressure"],
                         "flowRate": readings["flowRate"],
                     }
-
                     anomaly_history.append(record)
-
+                    # Prevent memory leak: maintain circular buffer max 1000 records
+                    if len(anomaly_history) > 1000:
+                        anomaly_history = anomaly_history[-1000:]
+                    os.makedirs(os.path.join(ROOT_DIR, "datasets"), exist_ok=True)
                     pd.DataFrame(anomaly_history).to_csv(
-                        "datasets/anomaly_history.csv", index=False
+                        os.path.join(ROOT_DIR, "datasets", "anomaly_history.csv"),
+                        index=False,
                     )
-
-                    print(f"[ALERT] {anomaly_type}")
-
-                # Broadcast live telemetry stream + server-side analytics to all web screens!
-                data["payload"]["anomaly_type"] = (
-                    anomaly_type if analytics["global_anomaly"] else "NONE"
-                )
-                print("ANOMALY:", data["payload"]["anomaly_type"])
+                    print(f"[ALERT] {effective_anomaly_type}")
 
                 data["payload"]["anomaly_history"] = anomaly_history[-10:]
+                if data["payload"]["anomaly_history"]:
+                    try:
+                        data["payload"]["anomaly_history"][-1]["escalation"] = (
+                            get_escalation_action(
+                                data["payload"].get("severity"),
+                                data["payload"].get("anomaly_type"),
+                            )
+                        )
+                    except Exception:
+                        pass
+
+                escalation = get_escalation_action(
+                    data["payload"].get("severity"), data["payload"].get("anomaly_type")
+                )
+                data["payload"]["escalation"] = escalation
+
+                # Emit clear broadcast-level logs to help frontend sync issues
+                print(
+                    f"[BROADCAST] anomaly_type={data['payload']['anomaly_type']} severity={data['payload'].get('severity')} escalation={escalation.get('level')} recommendation_present={'yes' if data['payload'].get('recommendation') else 'no'}"
+                )
+
+                # Ensure anomaly_history items include escalation summary for the feed
+                data["payload"]["anomaly_history"] = anomaly_history[-10:]
+                # attach escalation to most recent history item if exists
+                if data["payload"]["anomaly_history"]:
+                    try:
+                        data["payload"]["anomaly_history"][-1][
+                            "escalation"
+                        ] = escalation
+                    except Exception:
+                        pass
+                
+                # Validate critical payload fields before broadcast
+                if "anomaly_type" not in data.get("payload", {}):
+                    data["payload"]["anomaly_type"] = "NONE"
+                if "severity" not in data.get("payload", {}):
+                    data["payload"]["severity"] = "NORMAL"
+                if "anomaly_detection_mode" not in data.get("payload", {}):
+                    data["payload"]["anomaly_detection_mode"] = "NORMAL"
+                if "explainability" not in data.get("payload", {}):
+                    data["payload"]["explainability"] = {"z_scores": {}, "ml_anomaly": False, "confidence_pct": "80%", "isolation_label": "--"}
+
                 await manager.broadcast(json.dumps(data))
 
             # If dashboard sends an API request (e.g. handshake)

@@ -1,18 +1,21 @@
-from backend.agent_diagnostics import AgentDiagnosticEngine
-import asyncio
+from groq import Groq
+import os
+from dotenv import load_dotenv
 
-readings = {
-    "temperature": 95,
-    "vibration": 4.5,
-    "pressure": 18,
-    "flowRate": 40
-}
+load_dotenv()
 
-result = asyncio.run(
-    AgentDiagnosticEngine.get_recommendation(
-        "PIPE_BLOCKAGE",
-        readings
-    )
+client = Groq(
+    api_key=os.getenv("GROQ_API_KEY")
 )
 
-print(result)
+response = client.chat.completions.create(
+    model="llama-3.3-70b-versatile",
+    messages=[
+        {
+            "role": "user",
+            "content": "Pressure anomaly detected. Give maintenance recommendation."
+        }
+    ]
+)
+
+print(response.choices[0].message.content)
