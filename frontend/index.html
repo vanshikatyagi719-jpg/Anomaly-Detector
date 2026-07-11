@@ -103,21 +103,25 @@
 
         <div class="section-row content-row">
           <article class="card ai-card">
-            <div class="card-heading">
-              <div>
-                <div class="card-title">AI Maintenance Advisor</div>
-                <div class="status-subtext">
-                  Actionable guidance aligned to the current alert state.
-                </div>
+            <div class="advisor-header">
+              <div class="advisor-title-section">
+                <h2 class="advisor-title">🤖 AI Maintenance Advisor</h2>
+                <span id="advisor-severity" class="advisor-badge normal">NORMAL</span>
               </div>
-              <span id="advisor-severity" class="badge normal">NORMAL</span>
             </div>
+            
             <div id="recommendation" class="advisor-body">
-              No recommendation yet.
+              <div class="advisor-empty-state">
+                <div class="empty-icon">⏳</div>
+                <p>Analyzing system state...</p>
+              </div>
             </div>
-            <button id="ticket-btn" class="primary-button">
-              Generate Maintenance Ticket
-            </button>
+            
+            <div class="advisor-actions">
+              <button id="ticket-btn" class="primary-button">
+                Generate Maintenance Ticket
+              </button>
+            </div>
             <div id="ticket-output" class="ticket-output"></div>
           </article>
 
@@ -443,10 +447,15 @@
         
         const parts = Array.isArray(content.parts) ? content.parts : [];
         const actions = Array.isArray(content.actions) ? content.actions : [];
+        const source = content.source || (content.llm_powered ? "Groq AI" : "Rule-Based Fallback");
+        const sourceBadgeClass = content.llm_powered ? "source-llm" : "source-fallback";
         
         dom.recommendation.innerHTML = `
           <div class="rec-header">
-            <div class="rec-title">${content.title || "AI Advisory"}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div class="rec-title">${content.title || "AI Advisory"}</div>
+              <span class="source-badge ${sourceBadgeClass}">Source: ${source}</span>
+            </div>
             <div class="rec-summary">${content.summary || content.description || "Review the current system state."}</div>
           </div>
           ${actions.length ? `<ul class="rec-checklist">${actions.map((action) => `<li>${action}</li>`).join("")}</ul>` : ''}

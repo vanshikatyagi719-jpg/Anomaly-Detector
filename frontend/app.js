@@ -65,6 +65,11 @@ document.addEventListener("DOMContentLoaded", () => {
     logsWindow: document.getElementById("console-logs-window"),
     reportWindow: document.getElementById("report-content-window"),
     reportBadge: document.getElementById("report-badge-severity"),
+    // AI Advisor
+    recommendation: document.getElementById("recommendation"),
+    advisorSeverity: document.getElementById("advisor-severity"),
+    ticketBtn: document.getElementById("ticket-btn"),
+    ticketOutput: document.getElementById("ticket-output"),
     // Dataset Export
     btnDownload: document.getElementById("btn-download-dataset"),
     exportStatus: document.getElementById("export-status-txt"),
@@ -370,73 +375,161 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
   function renderDiagnosticReport(faultMode, rec) {
-    dom.reportBadge.textContent = rec.severity;
-    dom.reportBadge.className = "badge";
-    if (rec.severity === "NOMINAL") dom.reportBadge.classList.add("normal");
-    else if (rec.severity === "WARNING")
-      dom.reportBadge.classList.add("warning");
-    else dom.reportBadge.classList.add("critical");
+    // Update the advisor severity badge in the header
+    dom.advisorSeverity.textContent = rec.severity;
+    dom.advisorSeverity.className = "advisor-badge";
+    
+    // Map severity to badge class
+    const severityMap = {
+      "NOMINAL": "normal",
+      "WARNING": "warning",
+      "HIGH": "high",
+      "CRITICAL": "critical"
+    };
+    
+    const badgeClass = severityMap[rec.severity] || "normal";
+    dom.advisorSeverity.classList.add(badgeClass);
+
+    // Handle normal state
     if (faultMode === "NORMAL") {
-      dom.reportWindow.innerHTML = `
-                <div class="nominal-state-view">
-                    <div class="success-check-icon">✓</div>
-                    <h3>All Systems Green</h3>
-                    <p>No active anomalies flagged. Edge AI agents are monitoring raw z-score indices continuously. Injected turbine structures show 0% thermal deviation.</p>
-                </div>
-            `;
+      dom.recommendation.innerHTML = `
+        <div class="advisor-empty-state">
+          <div class="empty-icon">✓</div>
+          <p>All systems operating normally. No anomalies detected.</p>
+        </div>
+      `;
       return;
     }
+
+    // Build action items as checkboxes
     const actionItems = rec.actions
-      .map((act) => `<li><span class="check-bullet">▶</span> ${act}</li>`)
+      .map((act, idx) => `
+        <li class="action-item">
+          <input type="checkbox" class="action-checkbox" id="action-${idx}" />
+          <label for="action-${idx}" class="action-text">${act}</label>
+        </li>
+      `)
       .join("");
-    dom.reportWindow.innerHTML = `
-            <div class="recommendation-active-panel">
-                <div class="rec-meta-grid">
-                    <div class="rec-meta-item">
-                        <label>Category</label>
-                        <span>${rec.category}</span>
-                    </div>
-                    <div class="rec-meta-item">
-                        <label>AI Confidence</label>
-                        <span>${rec.confidence}</span>
-                    </div>
-                    <div class="rec-meta-item" style="grid-column: span 2;">
-                        <label>Generated At</label>
-                        <span>${rec.generatedAt}</span>
-                    </div>
-                </div>
-                <div class="rec-summary-box">
-                    <h3>Root-Cause Analysis</h3>
-                    <p>${rec.summary}</p>
-                </div>
-                <div class="rec-actions-box">
-                    <h3>Urgent Maintenance Protocol</h3>
-                    <ul class="actions-checklist">
-                        ${actionItems}
-                    </ul>
-                </div>
-                <div class="rec-logistics-box">
-                    <h3>Logistics & Tooling Requirements</h3>
-                    <div class="rec-logistics-grid">
-                        <div class="logistics-card">
-                            <label>Required Spares</label>
-                            <p>${rec.parts}</p>
-                        </div>
-                        <div class="logistics-card">
-                            <label>Required Tooling</label>
-                            <p>${rec.tools}</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
+
+    // Determine section colors based on severity
+    const getStatusBadgeClass = (sev) => {
+      if (sev === "NOMINAL") return "normal";
+      if (sev === "WARNING") return "warning";
+      if (sev === "HIGH") return "high";
+      return "critical";
+    };
+
+    const badgeStatus = getStatusBadgeClass(rec.severity);
+
+    // Render the new card design with all sections
+    dom.recommendation.innerHTML = `
+      <!-- Status Section -->
+      <div class="advisor-section status-section">
+        <div class="section-header">
+          <span class="section-icon">📊</span>
+          <span>Status</span>
+        </div>
+        <span class="status-badge ${badgeStatus}">${rec.severity}</span>
+      </div>
+
+      <!-- Detected Issue Section -->
+      <div class="advisor-section issue-section">
+        <div class="section-header">
+          <span class="section-icon">⚠️</span>
+          <span>Detected Issue</span>
+        </div>
+        <div class="issue-title">${rec.category}</div>
+        <div class="issue-description">${rec.summary}</div>
+      </div>
+
+      <!-- Likely Cause Section -->
+      <div class="advisor-section cause-section">
+        <div class="section-header">
+          <span class="section-icon">🔍</span>
+          <span>Likely Cause</span>
+        </div>
+        <div class="cause-text">${rec.rootCause || 'Analyzing sensor deviation patterns...'}</div>
+        ${rec.affectedSensors ? `
+          <div class="cause-details">
+            <strong>Affected Sensors:</strong><br/>
+            ${rec.affectedSensors.join(', ')}
+          </div>
+        ` : ''}
+      </div>
+
+      <!-- Recommended Actions Section -->
+      <div class="advisor-section actions-section">
+        <div class="section-header">
+          <span class="section-icon">✅</span>
+          <span>Recommended Actions</span>
+        </div>
+        <ul class="actions-list">
+          ${actionItems || '<li class="action-item"><span class="action-text">No actions required at this time</span></li>'}
+        </ul>
+      </div>
+
+      <!-- Priority Section -->
+      <div class="advisor-section priority-section">
+        <div class="section-header">
+          <span class="section-icon">🚨</span>
+          <span>Priority</span>
+        </div>
+        <span class="priority-level ${badgeStatus}">${rec.severity}</span>
+        ${rec.estimatedResolution ? `
+          <div style="font-size: 0.85rem; color: var(--muted); margin-top: 8px;">
+            Estimated resolution time: <strong>${rec.estimatedResolution}</strong>
+          </div>
+        ` : ''}
+      </div>
+
+      <!-- Source Section -->
+      <div class="advisor-section">
+        <div class="section-header">
+          <span class="section-icon">🔗</span>
+          <span>Source</span>
+        </div>
+        <span class="source-badge">${rec.source || 'AI Maintenance Advisor v1.0'}</span>
+        ${rec.confidence ? `
+          <div style="font-size: 0.85rem; color: var(--muted); margin-top: 8px;">
+            Confidence: <strong>${rec.confidence}</strong>
+          </div>
+        ` : ''}
+      </div>
+
+      <!-- Last Updated Section -->
+      <div class="advisor-section">
+        <div class="section-header">
+          <span class="section-icon">🕐</span>
+          <span>Last Updated</span>
+        </div>
+        <div class="updated-text">
+          <span class="updated-timestamp">${rec.generatedAt || new Date().toLocaleTimeString()}</span>
+        </div>
+      </div>
+    `;
+
+    // Add event listeners to action checkboxes
+    setTimeout(() => {
+      const checkboxes = dom.recommendation.querySelectorAll('.action-checkbox');
+      checkboxes.forEach((checkbox) => {
+        checkbox.addEventListener('change', function() {
+          const actionItem = this.closest('.action-item');
+          if (this.checked) {
+            actionItem.classList.add('completed');
+          } else {
+            actionItem.classList.remove('completed');
+          }
+        });
+      });
+    }, 0);
   }
   // ----------------------------------------------------
   // 7. WEBSOCKET streaming LISTENERS
   // ----------------------------------------------------
   function initWebSocketConnection() {
     // Construct standard WebSocket URL based on current browser domain
-    const wsUrl = "ws://localhost:8000/ws/stream";
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+const wsUrl = `${wsProtocol}//${window.location.host}/ws/stream`;
 
     console.log(`[WS] Connecting to WebSocket stream at ${wsUrl}`);
     const socket = new WebSocket(wsUrl);
@@ -566,7 +659,51 @@ document.addEventListener("DOMContentLoaded", () => {
   // Initialize WebSockets
   initWebSocketConnection();
   // ----------------------------------------------------
-  // 8. DATASET EXPORT UTILITY
+  // 8. MAINTENANCE TICKET GENERATION
+  // ----------------------------------------------------
+  dom.ticketBtn.addEventListener("click", () => {
+    if (activeAlertState === "NORMAL") {
+      dom.ticketOutput.innerHTML = `
+        <div class="ticket-card">
+          <p style="color: var(--muted);">No ticket needed - system is operating normally.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const ticketId = `WO-${Math.floor(1000 + Math.random() * 9000)}`;
+    const timestamp = new Date().toLocaleString();
+    const statusMap = {
+      "BEARING_WEAR": "Bearing Degradation",
+      "COOLANT_LEAK": "Coolant System Failure",
+      "PIPE_BLOCKAGE": "Fluid Flow Obstruction"
+    };
+
+    const ticketStatus = statusMap[activeAlertState] || "System Alert";
+
+    dom.ticketOutput.innerHTML = `
+      <div class="ticket-card">
+        <div class="ticket-row">
+          <span>Ticket ID:</span>
+          <strong>${ticketId}</strong>
+        </div>
+        <div class="ticket-row">
+          <span>Status:</span>
+          <strong>${ticketStatus}</strong>
+        </div>
+        <div class="ticket-row">
+          <span>Priority:</span>
+          <strong>High</strong>
+        </div>
+        <div class="ticket-row">
+          <span>Created:</span>
+          <strong>${timestamp}</strong>
+        </div>
+      </div>
+    `;
+  });
+  // ----------------------------------------------------
+  // 9. DATASET EXPORT UTILITY
   // ----------------------------------------------------
   dom.btnDownload.addEventListener("click", () => {
     dom.exportStatus.textContent =

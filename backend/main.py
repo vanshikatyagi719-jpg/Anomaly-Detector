@@ -247,6 +247,7 @@ async def get_anomaly_history():
 
 @app.websocket("/ws/stream")
 async def websocket_endpoint(websocket: WebSocket):
+    global anomaly_history
     await manager.connect(websocket)
     try:
         while True:
@@ -337,7 +338,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     }
                     if significant:
                         max_sensor = max(significant, key=lambda k: abs(significant[k]))
-                        raw_anomaly_type = anomaly_map.get(max_sensor, "MULTIVARIATE_ANOMALY")
+                        raw_anomaly_type = anomaly_map.get(
+                            max_sensor, "MULTIVARIATE_ANOMALY"
+                        )
 
                 confidence_pct = (
                     min(99, max(65, 70 + int(max_z * 3))) if raw_anomaly else 95
@@ -345,8 +348,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Ensure z_scores always exists and has valid values
                 z_scores_payload = analytics.get("z_scores", {})
                 if not z_scores_payload or not isinstance(z_scores_payload, dict):
-                    z_scores_payload = {"temperature": 0, "vibration": 0, "pressure": 0, "flowRate": 0}
-                
+                    z_scores_payload = {
+                        "temperature": 0,
+                        "vibration": 0,
+                        "pressure": 0,
+                        "flowRate": 0,
+                    }
+
                 explainability = {
                     "z_scores": z_scores_payload,
                     "ml_anomaly": analytics.get("ml_anomaly", False),
@@ -375,7 +383,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     data["payload"]["anomaly_detection_mode"] = "PERSISTED"
                 elif raw_anomaly:
                     # Show detected anomaly even if not yet persisted (raw detection)
-                    data["payload"]["anomaly_type"] = raw_anomaly_type or "MULTIVARIATE_ANOMALY"
+                    data["payload"]["anomaly_type"] = (
+                        raw_anomaly_type or "MULTIVARIATE_ANOMALY"
+                    )
                     data["payload"]["anomaly_detection_mode"] = "DETECTED_RAW"
                 else:
                     data["payload"]["anomaly_type"] = "NONE"
@@ -389,11 +399,19 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 # ==================== DEBUGGING LOGS ====================
                 print(f"[ANOMALY PIPELINE] Current State: {state.current_system_state}")
-                print(f"[ANOMALY PIPELINE] Persisted Type: {state.persisted_anomaly_type}")
-                print(f"[ANOMALY PIPELINE] Raw Anomaly: {raw_anomaly}, Raw Type: {raw_anomaly_type}")
+                print(
+                    f"[ANOMALY PIPELINE] Persisted Type: {state.persisted_anomaly_type}"
+                )
+                print(
+                    f"[ANOMALY PIPELINE] Raw Anomaly: {raw_anomaly}, Raw Type: {raw_anomaly_type}"
+                )
                 print(f"[ANOMALY PIPELINE] Effective Type: {effective_anomaly_type}")
-                print(f"[ANOMALY PIPELINE] Payload Anomaly Type: {data['payload']['anomaly_type']}")
-                print(f"[ANOMALY PIPELINE] Detection Mode: {data['payload'].get('anomaly_detection_mode')}")
+                print(
+                    f"[ANOMALY PIPELINE] Payload Anomaly Type: {data['payload']['anomaly_type']}"
+                )
+                print(
+                    f"[ANOMALY PIPELINE] Detection Mode: {data['payload'].get('anomaly_detection_mode')}"
+                )
 
                 if effective_anomaly_type:
                     if raw_anomaly or not state.last_recommendation:
@@ -435,6 +453,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "anomaly_type": effective_anomaly_type,
                         "severity": state.current_severity,
+                        "root_cause": data["payload"].get("root_cause", "Unknown"),
+                        "recommendation": data["payload"].get("recommendation", "N/A"),
                         "temperature": readings["temperature"],
                         "vibration": readings["vibration"],
                         "pressure": readings["pressure"],
@@ -483,7 +503,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         ] = escalation
                     except Exception:
                         pass
-                
+
                 # Validate critical payload fields before broadcast
                 if "anomaly_type" not in data.get("payload", {}):
                     data["payload"]["anomaly_type"] = "NONE"
@@ -492,7 +512,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 if "anomaly_detection_mode" not in data.get("payload", {}):
                     data["payload"]["anomaly_detection_mode"] = "NORMAL"
                 if "explainability" not in data.get("payload", {}):
-                    data["payload"]["explainability"] = {"z_scores": {}, "ml_anomaly": False, "confidence_pct": "80%", "isolation_label": "--"}
+                    data["payload"]["explainability"] = {
+                        "z_scores": {},
+                        "ml_anomaly": False,
+                        "confidence_pct": "80%",
+                        "isolation_label": "--",
+                    }
 
                 await manager.broadcast(json.dumps(data))
 

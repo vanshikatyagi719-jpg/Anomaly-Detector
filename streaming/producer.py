@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import math
 import random
 import sys
@@ -136,7 +137,8 @@ class TelemetryProducer:
                 print(f"[Streaming] Unexpected error: {e}. Exiting.")
                 break
 if __name__ == "__main__":
-    producer = TelemetryProducer()
+    backend_url = os.environ.get("BACKEND_URL", "ws://localhost:8000/ws/stream")
+    producer = TelemetryProducer(backend_url = backend_url)
     try:
         asyncio.run(producer.run())
     except KeyboardInterrupt:

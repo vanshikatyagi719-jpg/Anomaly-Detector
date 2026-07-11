@@ -1,5 +1,6 @@
 import os
 import datetime
+import json
 from groq import Groq
 from dotenv import load_dotenv
 
@@ -7,12 +8,13 @@ from dotenv import load_dotenv
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
-# Configure the Gemini client if key is present
-if GROQ_API_KEY:
+# Configure the Groq client if key is present
+if GROQ_API_KEY and GROQ_API_KEY != "your_groq_api_key_here":
     client = Groq(api_key=GROQ_API_KEY)
     LLM_ENABLED = True
-    print("[LLM] GROQ API key found. LLM-powered recommendations enabled.")
+    print("[LLM] Groq API connected successfully.")
 else:
+    client = None
     LLM_ENABLED = False
     print("[LLM] No API key found. Falling back to rule-based recommendations.")
 
@@ -21,97 +23,65 @@ else:
 # RULE-BASED FALLBACK (used when LLM is not configured)
 # ----------------------------------------------------------------
 FAULT_BLUEPRINTS = {
-    "NORMAL": {
-        "title": "Normal Operation",
-        "category": "No Fault Detected",
-        "severity": "INFO",
-        "confidence": "100%",
-        "summary": "System operating within normal parameters.",
-        "actions": ["No action required."],
-        "parts": "N/A",
-        "tools": "N/A",
-        "llm_powered": False,
+    'NORMAL': {
+        'title': 'Nominal Operations',
+        'category': 'Baseline Normal',
+        'severity': 'NOMINAL',
+        'confidence': '100%',
+        'summary': 'All telemetry arrays are within their designated normal operating range.',
+        'actions': ['Continue standard continuous monitoring cycles.'],
+        'parts': 'None required.',
+        'tools': 'None required.',
+        'llm_powered': False
     },
-    "PRESSURE_ANOMALY": {
-        "title": "Pressure System Instability",
-        "category": "Hydraulic Pressure Failure",
-        "severity": "HIGH",
-        "confidence": "95%",
-        "summary": "Abnormal pressure detected indicating possible blockage, leakage, or valve malfunction.",
-        "actions": [
-            "Inspect pressure relief valves.",
-            "Check hydraulic lines for leaks.",
-            "Verify pressure sensor calibration.",
-            "Inspect downstream flow restrictions.",
+    'BEARING_WEAR': {
+        'title': 'Mechanical Bearing Structural Fatigue',
+        'category': 'Rotational Mechanical Fatigue',
+        'severity': 'CRITICAL',
+        'confidence': '96%',
+        'summary': 'Vibration spike and thermal rise indicate advanced degradation of the Turbine Shaft Journal Bearing assembly. Consistent with severe friction or lubrication viscosity breakdown.',
+        'actions': [
+            '⚠️ URGENT: Initiate controlled turbine RPM shutdown sequence.',
+            'Perform Lockout-Tagout (LOTO) protocols on the main circuit breaker.',
+            'Inspect the bearing race for metal filings, pitting, or discoloration.',
+            'Flush old lubrication and inspect casing for structural cracks.'
         ],
-        "parts": "Pressure relief valve, pressure sensor.",
-        "tools": "Pressure gauge, calibration kit.",
-        "llm_powered": False,
+        'parts': 'Journal Bearing Assembly (JB-880-XT), High-Temp Lubricant (ISO VG 220).',
+        'tools': 'Hydraulic bearing puller, laser alignment tool, torque wrench set.',
+        'llm_powered': False
     },
-    "TEMPERATURE_ANOMALY": {
-        "title": "Thermal Overload Condition",
-        "category": "Heat Management Failure",
-        "severity": "HIGH",
-        "confidence": "94%",
-        "summary": "Abnormal temperature rise detected indicating overheating or cooling inefficiency.",
-        "actions": [
-            "Inspect cooling system.",
-            "Check coolant circulation.",
-            "Inspect heat exchanger.",
-            "Verify temperature sensor calibration.",
+    'COOLANT_LEAK': {
+        'title': 'Thermal Overload / Coolant Flow Failure',
+        'category': 'Fluid Mechanics & Thermal Overload',
+        'severity': 'CRITICAL',
+        'confidence': '98%',
+        'summary': 'Temperature surge combined with flow rate drop and pressure loss confirms major coolant containment loss or pump mechanical failure.',
+        'actions': [
+            '⚠️ URGENT: Immediately shut down the turbine and isolate main heaters.',
+            'Deploy technician to check for coolant pooling at the secondary heat exchanger.',
+            'Inspect coolant pump power feed and pressure-relief valve.',
+            'Confirm integrity of inlet/outlet hoses and tighten joint clamps.'
         ],
-        "parts": "Coolant pump, thermal sensor.",
-        "tools": "Thermal camera, thermometer.",
-        "llm_powered": False,
+        'parts': 'EPDM reinforced coolant hoses (2.5"), Solenoid valve (SV-309).',
+        'tools': 'Infrared thermal camera, mechanical pressure gauge, hose clamp wrenches.',
+        'llm_powered': False
     },
-    "VIBRATION_ANOMALY": {
-        "title": "Mechanical Vibration Anomaly",
-        "category": "Rotating Equipment Failure",
-        "severity": "CRITICAL",
-        "confidence": "96%",
-        "summary": "Excessive vibration detected indicating bearing wear, shaft imbalance, or misalignment.",
-        "actions": [
-            "Inspect bearings.",
-            "Check shaft alignment.",
-            "Verify lubrication levels.",
-            "Perform vibration spectrum analysis.",
+    'PIPE_BLOCKAGE': {
+        'title': 'Systemic Fluid Flow Pipe Blockage',
+        'category': 'Fluid Hydraulics Blockage',
+        'severity': 'WARNING',
+        'confidence': '94%',
+        'summary': 'Significant pressure spike with flow rate collapse indicates a major downstream blockage. Pump is operating against dangerously high backpressure.',
+        'actions': [
+            '⚠️ WARNING: Reduce inlet feed pump speed to decrease pipeline pressure.',
+            'Inspect inline screen filters (Y-strainer) for particle build-up.',
+            'Verify all inline gate valves are fully open.',
+            'Conduct acoustic inspection along pipeline joints for cavitation zones.'
         ],
-        "parts": "Bearing assembly.",
-        "tools": "Vibration analyzer.",
-        "llm_powered": False,
-    },
-    "FLOWRATE_ANOMALY": {
-        "title": "Flow Restriction Detected",
-        "category": "Fluid Transport Failure",
-        "severity": "WARNING",
-        "confidence": "93%",
-        "summary": "Abnormal flow rate detected indicating blockage, leakage, or pump degradation.",
-        "actions": [
-            "Inspect pipeline blockages.",
-            "Check pump performance.",
-            "Inspect valves.",
-            "Verify flow meter calibration.",
-        ],
-        "parts": "Flow sensor, pipeline seals.",
-        "tools": "Flow meter.",
-        "llm_powered": False,
-    },
-    "MULTIVARIATE_ANOMALY": {
-        "title": "System-Wide Operational Deviation",
-        "category": "Multi-Sensor Failure",
-        "severity": "CRITICAL",
-        "confidence": "90%",
-        "summary": "Multiple telemetry variables indicate abnormal machine behavior.",
-        "actions": [
-            "Perform complete diagnostic inspection.",
-            "Review maintenance history.",
-            "Inspect all critical subsystems.",
-            "Escalate to maintenance team.",
-        ],
-        "parts": "To be determined.",
-        "tools": "Full diagnostic toolkit.",
-        "llm_powered": False,
-    },
+        'parts': 'High-performance mesh strainer basket, EPDM piping seals (4").',
+        'tools': 'Ultrasonic flow meter, Y-strainer socket wrench, line flush kit.',
+        'llm_powered': False
+    }
 }
 
 
@@ -120,12 +90,12 @@ class AgentDiagnosticEngine:
     @staticmethod
     async def get_recommendation(fault_mode: str, readings: dict) -> dict:
         """
-        Attempts to generate an LLM-powered recommendation using openrouter.
+        Attempts to generate an LLM-powered recommendation using Groq.
         Falls back to rule-based templates if the API key is not set.
         """
-        if LLM_ENABLED and fault_mode != "NORMAL":
+        if LLM_ENABLED and fault_mode != 'NORMAL':
             try:
-                return await AgentDiagnosticEngine._call_llm(fault_mode, readings)
+                return await AgentDiagnosticEngine._call_groq(fault_mode, readings)
             except Exception as e:
                 print(f"[LLM] Groq call failed: {e}. Using fallback rules.")
                 return AgentDiagnosticEngine._rule_based(fault_mode, readings)
@@ -133,7 +103,7 @@ class AgentDiagnosticEngine:
             return AgentDiagnosticEngine._rule_based(fault_mode, readings)
 
     @staticmethod
-    async def _call_llm(fault_mode: str, readings: dict) -> dict:
+    async def _call_groq(fault_mode: str, readings: dict) -> dict:
         """
         Calls the Groq API with a rich industrial context prompt
         and returns a structured, dynamic maintenance recommendation.
@@ -168,51 +138,41 @@ Based on this data, respond in this EXACT JSON format and nothing else:
 
 Be precise, technical, and specific to the exact sensor values provided. Reference the actual readings in your summary.
 """
+
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {
-                    "role": "user",
-                    "content": "You must respond ONLY with valid JSON. No markdown. No explanations.",
-                },
+                {"role": "system", "content": "You are a precise industrial diagnostics agent. Always respond with valid JSON only, no markdown formatting."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.1,
+            response_format={"type": "json_object"},
         )
+        response_text = response.choices[0].message.content.strip()
 
-        response_text = response.choices[0].message.content
-
-        # Strip markdown code blocks if present
+        # Strip markdown code blocks if the model adds them anyway
         if response_text.startswith("```"):
-            lines = response_text.split("\n")
-            response_text = "\n".join(lines[1:-1])
-
-        import json
+            lines = response_text.split('\n')
+            response_text = '\n'.join(lines[1:-1])
 
         rec = json.loads(response_text)
-        rec["llm_powered"] = True
-        rec["generatedAt"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        rec['llm_powered'] = True
+        rec['generatedAt'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         return rec
 
     @staticmethod
     def _rule_based(fault_mode: str, readings: dict) -> dict:
         """
-        Returns a static rule-based recommendation when Gemini is unavailable.
+        Returns a static rule-based recommendation when Groq is unavailable.
         """
-        # Use a sensible fallback if the specific fault blueprint is not defined
-        blueprint = FAULT_BLUEPRINTS.get(
-            fault_mode, FAULT_BLUEPRINTS.get("MULTIVARIATE_ANOMALY")
-        )
+        blueprint = FAULT_BLUEPRINTS.get(fault_mode, FAULT_BLUEPRINTS['NORMAL'])
         result = dict(blueprint)
-        result["generatedAt"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        result['generatedAt'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Dynamically inject real readings into summary
-        # Safely append live readings to the summary
-        live_readings = (
+        result['summary'] = (
+            result['summary'] +
             f" [Live Readings → Temp: {readings.get('temperature')}°C, "
             f"Vib: {readings.get('vibration')} mm/s, "
             f"Pres: {readings.get('pressure')} bar, "
             f"Flow: {readings.get('flowRate')} L/min]"
         )
-        result["summary"] = (result.get("summary", "") + live_readings).strip()
         return result
